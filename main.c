@@ -33,7 +33,7 @@ void handle_env_command(void)
 
 	while (*env != NULL)
 	{
-		printf("%s\n", *env);
+		print("%s\n", *env);
 		env++;
 	}
 }
@@ -121,7 +121,7 @@ int main(void)
 
 	while (1)
 	{
-		printf("simple_shell$ ");
+		print("simple_shell$ ");
 		fflush(stdout);
 
 		command = custom_getline();
@@ -129,7 +129,7 @@ int main(void)
 
 		if (command == NULL)
 		{
-			printf("\n");
+			print("\n");
 			break;
 		}
 		if (strcmp(arguments[0], "exit") == 0)
