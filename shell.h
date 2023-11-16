@@ -19,10 +19,10 @@
 
 extern char **environ;
 
-char* custom_getline();
-void print(const char* format, ...);
-void free_arguments(char** arguments);
+char *custom_getline(void);
+void print(const char *format, ...);
+void free_arguments(char **arguments);
 void search_and_execute_command(char **arguments);
-char** tokenize_arguments(char* command);
+char **tokenize_arguments(char *command);
 
 #endif
