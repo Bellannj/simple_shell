@@ -1,151 +1,136 @@
 #include "shell.h"
 
+int execute(char **args, char **front);
+void signal_handler(int sig);
+
 /**
- * handle_exit_command - handles the logic for the "exit" command.
- * @arguments: argument.
- *
- * Return: 0 on success -1 on fail.
+ * signal_handler - Print a new prompt upon a signal.
+ * @sig: signal.
  */
 
-void handle_exit_command(char **arguments)
+void signal_handler(int sig)
 {
-	if (arguments[1] != NULL)
-	{
-		int status = atoi(arguments[1]);
+	char *new_prompt = "\n$ ";
 
-		exit(status);
+	(void)sig;
+	signal(SIGINT, signal_handler);
+	write(STDIN_FILENO, new_prompt, 3);
+}
+
+/**
+ * execute - Executes a command in a child process.
+ * @args: An array of arguments.
+ * @front: A double pointer to the beginning of args.
+ *
+ * Return: If an error occurs - a corresponding error code.
+ *         O/w - The exit value of the last executed command.
+ */
+int execute(char **args, char **front)
+{
+	pid_t child_pid;
+	int status, flag = 0, ret = 0;
+	char *command = args[0];
+
+	if (command[0] != '/' && command[0] != '.')
+	{
+		flag = 1;
+		command = get_location(command);
+	}
+
+	if (!command || (access(command, F_OK) == -1))
+	{
+		if (errno == EACCES)
+			ret = (_error_creat(args, 126));
+		else
+			ret = (_error_creat(args, 127));
 	}
 	else
 	{
-		exit(EXIT_SUCCESS);
-	}
-}
-
-/**
- * handle_env_command - handles the logic for the env command.
- *
- * Return: NULL.
- */
-
-void handle_env_command(void)
-{
-	char **env = environ;
-
-	while (*env != NULL)
-	{
-		print("%s\n", *env);
-		env++;
-	}
-}
-
-/**
- * handle_other_command - handles logic for commands
- * other than "exit" and "env".
- * @arguments: arguments
- *
- * Return: void.
- */
-
-void handle_other_command(char **arguments)
-{
-	pid_t pid = fork();
-
-	if (pid < 0)
-	{
-		perror("fork");
-		exit(EXIT_FAILURE);
-	}
-	else if (pid == 0)
-	{
-		if (strcmp(arguments[0], "/bin/ls") == 0)
+		child_pid = fork();
+		if (child_pid == -1)
 		{
-			execv(arguments[0], arguments);
-			perror("execv");
-			exit(EXIT_FAILURE);
+			if (flag)
+				free(command);
+			perror("Error child:");
+			return (1);
+		}
+		if (child_pid == 0)
+		{
+			execve(command, args, environ);
+			if (errno == EACCES)
+				ret = (_error_creat(args, 126));
+			free_envaro();
+			free_arg_1(args, front);
+			alias_list(aliases);
+			_exit(ret);
 		}
 		else
 		{
-			search_and_execute_command(arguments);
+			wait(&status);
+			ret = WEXITSTATUS(status);
 		}
 	}
-	else
-	{
-		int status;
-
-		waitpid(pid, &status, 0);
-	}
+	if (flag)
+		free(command);
+	return (ret);
 }
 
 /**
- * search_and_execute_command - attempts to locate the command by.
- * concatenating each directory path.
- * @arguments:args
- * Return: NULL
- */
-
-void search_and_execute_command(char **arguments)
-{
-	char *path = getenv("PATH");
-	char *token = strtok(path, ":");
-
-	while (token != NULL)
-	{
-		char *command_path = malloc(strlen(token) + strlen(arguments[0]) + 2);
-
-		sprintf(command_path, "%s/%s", token, arguments[0]);
-
-		if (access(command_path, F_OK) == 0)
-		{
-			arguments[0] = command_path;
-			execv(arguments[0], arguments);
-			perror("execv");
-			exit(EXIT_FAILURE);
-		}
-		free(command_path);
-		token = strtok(NULL, ":");
-	}
-	fprintf(stderr, "Command not found: %s\n", arguments[0]);
-	exit(EXIT_FAILURE);
-}
-
-/**
- * main - entery point program.
+ * main - The entery point to program.
+ * @argc: The number of arguments supplied to the program.
+ * @argv: An array of pointers to the arguments.
  *
- * Return: 0 (EXIT_SUCCESS) -1 om (EXIT_FAILURE).
+ * Return: return value of the last executed command.
  */
-
-int main(void)
+int main(int argc, char *argv[])
 {
-	char *command;
-	char **arguments;
+	int ret = 0;
+	int retn;
+	int *exe_ret = &retn;
+	char *prompt = "$ ", *new_line = "\n";
+
+	name = argv[0];
+	list = 1;
+	aliases = NULL;
+	signal(SIGINT, signal_handler);
+
+	*exe_ret = 0;
+	environ = copeyenv();
+	if (!environ)
+		exit(-100);
+
+	if (argc != 1)
+	{
+		ret = _file_cmd(argv[1], exe_ret);
+		free_envaro();
+		alias_list(aliases);
+		return (*exe_ret);
+	}
+
+	if (!isatty(STDIN_FILENO))
+	{
+		while (ret != END_OF_FILE && ret != EXIT)
+			ret = handle_args(exe_ret);
+		free_envaro();
+		alias_list(aliases);
+		return (*exe_ret);
+	}
 
 	while (1)
 	{
-		print("simple_shell$ ");
-		fflush(stdout);
-
-		command = custom_getline();
-		arguments = tokenize_arguments(command);
-
-		if (command == NULL)
+		write(STDOUT_FILENO, prompt, 2);
+		ret = handle_args(exe_ret);
+		if (ret == END_OF_FILE || ret == EXIT)
 		{
-			print("\n");
-			break;
+			if (ret == END_OF_FILE)
+				write(STDOUT_FILENO, new_line, 1);
+			free_envaro();
+			alias_list(aliases);
+			exit(*exe_ret);
 		}
-		if (strcmp(arguments[0], "exit") == 0)
-		{
-			handle_exit_command(arguments);
-		}
-		else if (strcmp(arguments[0], "env") == 0)
-		{
-			handle_env_command();
-		}
-		else
-		{
-			handle_other_command(arguments);
-		}
-		free(arguments);
-		free(command);
 	}
-	return (0);
+
+	free_envaro();
+	alias_list(aliases);
+	return (*exe_ret);
 }
